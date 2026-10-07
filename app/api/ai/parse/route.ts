@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
+import { requireAdmin } from '@/lib/auth';
+import { getDirectory } from '@/lib/access';
 
 // Initialize OpenAI client pointing to OpenRouter
 const openai = new OpenAI({
@@ -17,6 +17,9 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
+    const { user, error } = await requireAdmin();
+    if (error) return error;
+
     const { transcript } = await req.json();
 
     if (!transcript) {
@@ -24,12 +27,9 @@ export async function POST(req: Request) {
     }
 
     // 1. Fetch existing users to provide as context to the AI
-    // The AI needs this to assign valid managerId and assigneeId
-    const users = await prisma.user.findMany({
-      select: { id: true, name: true, role: true, specialization: true, skills: true }
-    });
+    const directory = await getDirectory();
 
-    if (users.length === 0) {
+    if (directory.length === 0) {
       return NextResponse.json({ error: 'No users found in the database. Please run the seeder first.' }, { status: 400 });
     }
 
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 Your job is to read a meeting transcript and extract the projects and tasks discussed.
 
 Here is the current team directory (JSON):
-${JSON.stringify(users, null, 2)}
+${JSON.stringify(directory, null, 2)}
 
 Instructions:
 1. Extract all discussed projects. For each project, you must provide: name, clientName, description, managerId, and deadline (YYYY-MM-DD).
